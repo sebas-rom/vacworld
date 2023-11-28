@@ -25,7 +25,7 @@ import java.util.Map;
 public class VacAgent extends Agent {
 
     private final String ID = "1";
-    // Think about locations you already visited.  Remember those.
+    // Think about locations you already visited.  Remember those
     private boolean dirtStatus = true;
     private boolean obstacleInFront = true;
 
