@@ -227,7 +227,7 @@ public class VacuumWorld extends Environment {
             String agentName = null;
             try {
                 //agentName = args[i] + ".VacAgent";
-                agentName = "myagent" + ".VacAgent";
+                agentName = "myagent" + ".VacAgent_1";
                 ClassLoader myClassLoader = ClassLoader.getSystemClassLoader();
                 Class myClass = myClassLoader.loadClass(agentName);
                 Object o = myClass.newInstance();
