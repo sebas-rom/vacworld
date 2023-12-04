@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package myagent;
 
 import agent.Action;
@@ -14,156 +9,296 @@ import vacworld.TurnLeft;
 import vacworld.TurnRight;
 import vacworld.VacPercept;
 import vacworld.GoForward;
-import java.util.HashMap;
-import java.util.Map;
+import vacworld.Direction;
 
-/* Change the code as appropriate.  This code
-   is here to help you understand the mechanism
-   of the simulator. 
-*/
+import java.util.Random;
 
 public class VacAgent extends Agent {
 
-    private final String ID = "1";
-    // Think about locations you already visited.  Remember those
-    private boolean dirtStatus = true;
-    private boolean obstacleInFront = true;
+    private boolean seeDirt = false;
+    private boolean seeObst = false;
+    private boolean shutDown = false;
 
-    private Map<String, String> memory = new HashMap<>();
-    private int currentX = 0;
-    private int currentY = 0;
-    private String currentDirection = "NORTH";
+    private int[][] map = new int[12][12]; // internal map
+    private static final int VISITED = 1;
+    private static final int OBSTACLE = 99;
+    private static final int DIRT = 11;
+    private int X = 5;
+    private int Y = 5;
+    private int direct = Direction.NORTH;
+    private static final int CELL_LIMIT = 3; // limits how many times a vacuum can visit a cell
+
+    // constants for the vacuum to "think" what's around it
+    private int up;
+    private int right;
+    private int down;
+    private int left;
 
     public void see(Percept p) {
-        VacPercept vp = (VacPercept) p;
+        VacPercept agent = (VacPercept) p;
 
-        dirtStatus = vp.seeDirt();
-        obstacleInFront = vp.seeObstacle();
+        up = map[X - 1][Y];
+        right = map[X][Y + 1];
+        down = map[X + 1][Y];
+        left = map[X][Y - 1];
 
-        if (!memory.containsKey(getCurrentPosition())) {
-            memory.put(getCurrentPosition(), "unexplored");
+        if (agent.seeObstacle()) {
+            seeObst = true;
+            handleObstacle();
+        } else if (agent.seeDirt()) {
+            seeDirt = true;
+            handleDirt();
+        } else {
+            handleEmptyCell();
         }
-        if (obstacleInFront) {
-            memory.put(getNextPosition(), "obstacle"); //next forward block has an obstacle
-        }
+
+        printMap();
     }
 
     public Action selectAction() {
-        Action action;
+        if (seeObst) {
+            seeObst = false;
+            return seeObject(map);
+        } else if (seeDirt) {
+            seeDirt = false;
+            return new SuckDirt();
+        } else if (shutDown) {
+            return new ShutOff();
+        } else {
+            Action explore = checkSurround(map);
 
-        // Logic rules for making decisions
-        if (dirtStatus) {
-            action = new SuckDirt();
-            memory.put(getCurrentPosition(), "cleaned");
-        } else if (obstacleInFront) {
-            // Handle obstacle by turning right
-            if (shouldGoRight()) {
-                action = new TurnRight();
-                updateDirection("RIGHT");
-            } else {
-                action = new TurnLeft();
-                updateDirection("LEFT");
+            if (explore.toString().equals("GO FORWARD")) {
+                moveForward();
             }
 
-        } else {
-            // Move forward to the next unexplored or cleaned position
-            action = new GoForward();
-            updatePosition();
+            return explore;
         }
+    }
 
-        // If there are no possible moves, shut off
-        if (!canMove()) {
-            action = new ShutOff();
+    private void handleObstacle() {
+        switch (direct) {
+            case Direction.NORTH:
+                map[X - 1][Y] = OBSTACLE;
+                break;
+            case Direction.EAST:
+                map[X][Y + 1] = OBSTACLE;
+                break;
+            case Direction.SOUTH:
+                map[X + 1][Y] = OBSTACLE;
+                break;
+            case Direction.WEST:
+                map[X][Y - 1] = OBSTACLE;
         }
+    }
 
-        return action;
+    private void handleDirt() {
+        map[X][Y] = 0;
+    }
+
+    private void handleEmptyCell() {
+        map[X][Y] += VISITED;
+        if (map[X][Y] == CELL_LIMIT) {
+            shutDown = true;
+        }
+    }
+
+    private void printMap() {
+        System.out.println("Vacuum Cleaner Internal Map:");
+
+        // Print column
+        System.out.print("   ");
+        for (int i = 0; i < map[0].length; i++) {
+        }
+        System.out.println();
+
+        // Print rows
+        for (int i = 0; i < map.length; i++) {
+            for (int j = 0; j < map[i].length; j++) {
+                System.out.printf("%-4d", map[i][j]);
+            }
+            System.out.println();
+        }
+        System.out.println();
+    }
+
+    private void moveForward() {
+        switch (direct) {
+            case Direction.NORTH:
+                X -= 1;
+                break;
+            case Direction.EAST:
+                Y += 1;
+                break;
+            case Direction.SOUTH:
+                X += 1;
+                break;
+            case Direction.WEST:
+                Y -= 1;
+                break;
+        }
     }
 
     public String getId() {
-        return ID;
+        return "1";
     }
 
-    private void updateDirection(String way) {
-        if(way == "RIGHT") {
-            switch (currentDirection) {
-                case "NORTH":
-                    currentDirection = "EAST";
-                    break;
-                case "EAST":
-                    currentDirection = "SOUTH";
-                    break;
-                case "SOUTH":
-                    currentDirection = "WEST";
-                    break;
-                case "WEST":
-                    currentDirection = "NORTH";
-                    break;
-            }
-        }else{
-            switch (currentDirection) {
-                case "NORTH":
-                    currentDirection = "WEST";
-                    break;
-                case "EAST":
-                    currentDirection = "NORTH";
-                    break;
-                case "SOUTH":
-                    currentDirection = "EAST";
-                    break;
-                case "WEST":
-                    currentDirection = "SOUTH";
-                    break;
-            }
+    public Action checkSurround(int[][] map) {
+        Action decision = new GoForward();
+
+        Random rand = new Random();
+        int prob = rand.nextInt(2);
+
+        switch (direct) {
+            case Direction.NORTH:
+                if (left == right && left < up) {
+                    if (prob == 1) {
+                        decision = new TurnRight();
+                        direct = Direction.EAST;
+                    } else {
+                        decision = new TurnLeft();
+                        direct = Direction.WEST;
+                    }
+                } else if (left > right) {
+                    if (right < up) {
+                        decision = new TurnRight();
+                        direct = Direction.EAST;
+                    }
+                } else if (left < right) {
+                    if (left < up) {
+                        decision = new TurnLeft();
+                        direct = Direction.WEST;
+                    }
+                }
+                break;
+            case Direction.EAST:
+                if (up == down && up < right) {
+                    if (prob == 1) {
+                        decision = new TurnRight();
+                        direct = Direction.SOUTH;
+                    } else {
+                        decision = new TurnLeft();
+                        direct = Direction.NORTH;
+                    }
+                } else if (up > down) {
+                    if (down < right) {
+                        decision = new TurnRight();
+                        direct = Direction.SOUTH;
+                    }
+                } else if (down > up) {
+                    if (up < right) {
+                        decision = new TurnLeft();
+                        direct = Direction.NORTH;
+                    }
+                }
+                break;
+            case Direction.SOUTH:
+                if (left == right && left < down) {
+                    if (prob == 1) {
+                        decision = new TurnRight();
+                        direct = Direction.WEST;
+                    } else {
+                        decision = new TurnLeft();
+                        direct = Direction.EAST;
+                    }
+                } else if (left > right) {
+                    if (right < down) {
+                        decision = new TurnLeft();
+                        direct = Direction.EAST;
+                    }
+                } else if (left < right) {
+                    if (left < down) {
+                        decision = new TurnRight();
+                        direct = Direction.WEST;
+                    }
+                }
+                break;
+            default:
+                if (up == down && up < left) {
+                    if (prob == 1) {
+                        decision = new TurnRight();
+                        direct = Direction.SOUTH;
+                    } else {
+                        decision = new TurnLeft();
+                        direct = Direction.NORTH;
+                    }
+                } else if (down > up) {
+                    if (up < left) {
+                        decision = new TurnRight();
+                        direct = Direction.NORTH;
+                    }
+                } else if (up > down) {
+                    if (down < left) {
+                        decision = new TurnLeft();
+                        direct = Direction.SOUTH;
+                    }
+                }
         }
+        return decision;
     }
 
-    private void updatePosition() {
-        switch (currentDirection) {
-            case "NORTH":
-                currentY++;
+    public Action seeObject(int[][] map) {
+        Action decision;
+        int up = map[X - 1][Y];
+        int right = map[X][Y + 1];
+        int down = map[X + 1][Y];
+        int left = map[X][Y - 1];
+
+        Random rand = new Random();
+        int picker = rand.nextInt(2);
+
+        switch (direct) {
+            case Direction.NORTH:
+                if (right > left) {
+                    decision = new TurnLeft();
+                    direct = Direction.WEST;
+                } else if (left > right) {
+                    decision = new TurnRight();
+                    direct = Direction.EAST;
+                } else {
+                    decision = (picker == 1) ? new TurnLeft() : new TurnRight();
+                    direct = (picker == 1) ? Direction.WEST : Direction.EAST;
+                }
                 break;
-            case "SOUTH":
-                currentY--;
+            case Direction.EAST:
+                if (up > down) {
+                    decision = new TurnRight();
+                    direct = Direction.SOUTH;
+                } else if (down > up) {
+                    decision = new TurnLeft();
+                    direct = Direction.NORTH;
+                } else {
+                    decision = (picker == 1) ? new TurnRight() : new TurnLeft();
+                    direct = (picker == 1) ? Direction.SOUTH : Direction.NORTH;
+                }
                 break;
-            case "EAST":
-                currentX++;
+            case Direction.SOUTH:
+                if (right > left) {
+                    decision = new TurnLeft();
+                    direct = Direction.EAST;
+                } else if (left > right) {
+                    decision = new TurnRight();
+                    direct = Direction.WEST;
+                } else {
+                    decision = (picker == 1) ? new TurnLeft() : new TurnRight();
+                    direct = (picker == 1) ? Direction.EAST : Direction.WEST;
+                }
                 break;
-            case "WEST":
-                currentX--;
+            case Direction.WEST:
+                if (up > down) {
+                    decision = new TurnLeft();
+                    direct = Direction.SOUTH;
+                } else if (down > up) {
+                    decision = new TurnRight();
+                    direct = Direction.NORTH;
+                } else {
+                    decision = (picker == 1) ? new TurnLeft() : new TurnRight();
+                    direct = (picker == 1) ? Direction.SOUTH : Direction.NORTH;
+                }
                 break;
+            default:
+                decision = new TurnLeft();
         }
-    }
-    private String getCurrentPosition() { //it is a relative position
-        return currentX + "," + currentY;
-    }
-    private String getNextPosition() { //it is a relative position
-         switch (currentDirection){
-             case "NORTH":
-                return currentX + "," + (currentY+1);
-             case "SOUTH":
-                return currentX + "," + (currentY-1);
-             case "EAST":
-                return (currentX+1) + "," + currentY;
-             case "WEST":
-                return (currentX-1) + "," + currentY;
-              default:
-                return null;
-         }
-    }
 
-    private boolean shouldGoRight() {
-        // Implement logic to decide whether to go right or left based on the current memory
-        // You can use information from the memory map to make this decision
-        // This is a placeholder; you need to implement the actual logic
-        // For example, you can check if the left side is less explored than the right side
-        return true; // Placeholder, replace with your actual logic
-    }
-
-    private boolean canMove() {
-        // Implement logic to check if there are possible moves
-        // For example, check if there are unexplored or cleaned positions nearby
-        // You can use the memory to make this decision
-        // This is a placeholder, you need to implement the actual logic
-        return true;
+        return decision;
     }
 }
